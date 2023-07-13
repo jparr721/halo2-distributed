@@ -1,22 +1,12 @@
+pub mod message_passing;
+
+use crate::message_passing::Call;
 use futures::SinkExt;
-use serde_derive::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Framed, LinesCodec};
 struct Worker {
     listener: TcpListener,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Call {
-    name: String,
-    args: Vec<String>,
-}
-
-impl Call {
-    pub fn serialize(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string(self)
-    }
 }
 
 impl Worker {
