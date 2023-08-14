@@ -1,0 +1,21 @@
+version: "3"
+services:
+  worker1:
+    image: worker
+    environment:
+      - WORKER=0
+    restart: always
+    ports:
+      - 8081:8081
+  worker2:
+    image: worker
+    environment:
+      - WORKER=1
+    restart: always
+    ports:
+      - 8082:8082
+
+
+volumes:
+  worker1:
+  worker2:
