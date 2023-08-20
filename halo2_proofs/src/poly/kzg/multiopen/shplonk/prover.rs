@@ -16,6 +16,7 @@ use crate::transcript::{EncodedChallenge, TranscriptWrite};
 use ff::{Field, PrimeField};
 use group::Curve;
 use halo2curves::pairing::Engine;
+use logging_timer::time;
 use rand_core::RngCore;
 use rayon::prelude::*;
 use std::fmt::Debug;
@@ -116,6 +117,7 @@ where
     }
 
     /// Create a multi-opening proof
+    #[time]
     fn create_proof<
         'com,
         Ch: EncodedChallenge<E::G1Affine>,

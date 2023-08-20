@@ -57,3 +57,7 @@ pub enum WorkerStatus {
     Ok = 0x00,
     HashMismatch = 0x01,
 }
+
+pub struct Dispatcher {}
+
+impl Dispatcher {}
