@@ -117,7 +117,7 @@ where
     }
 
     /// Create a multi-opening proof
-    #[time]
+    #[time("info")]
     fn create_proof<
         'com,
         Ch: EncodedChallenge<E::G1Affine>,

@@ -191,7 +191,7 @@ struct InstanceSingle<C: CurveAffine> {
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
-#[time]
+#[time("info")]
 pub fn create_proof<
     'params,
     Scheme: CommitmentScheme,
