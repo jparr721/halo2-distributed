@@ -1,6 +1,6 @@
 use halo2_proofs_distributed::dispatcher::{WorkerMethod, WorkerStatus};
 use once_cell::sync::Lazy;
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{io, net::SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpListener;
 

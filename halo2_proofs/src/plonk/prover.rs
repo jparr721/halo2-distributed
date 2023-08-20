@@ -1,13 +1,13 @@
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use group::Curve;
 use halo2curves::CurveExt;
-use logging_timer::time;
+use logging_timer::{timer, Level};
 use rand_core::RngCore;
 use std::collections::BTreeSet;
 use std::env::var;
 use std::ops::RangeTo;
 use std::sync::atomic::AtomicUsize;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{collections::HashMap, iter, mem, sync::atomic::Ordering};
 
 use super::{
@@ -187,11 +187,14 @@ struct InstanceSingle<C: CurveAffine> {
     pub instance_polys: Vec<Polynomial<C::Scalar, Coeff>>,
 }
 
+fn print_interval(fn_name: &'static str, time: Duration) {
+    println!("[HALO 2] -- {} took {:?} time to execute.", fn_name, time);
+}
+
 /// This creates a proof for the provided `circuit` when given the public
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
-#[time("info")]
 pub fn create_proof<
     'params,
     Scheme: CommitmentScheme,
@@ -211,6 +214,7 @@ pub fn create_proof<
 where
     Scheme::Scalar: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
 {
+    let start = Instant::now();
     for instance in instances.iter() {
         if instance.len() != pk.vk.cs.num_instance_columns {
             return Err(Error::InvalidInstances);
@@ -285,6 +289,9 @@ where
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
+
+    let instance_create = start.elapsed();
+    print_interval("create instance", instance_create);
 
     let (advice, challenges) = {
         let mut advice = vec![
@@ -405,6 +412,12 @@ where
         (advice, challenges)
     };
 
+    let advice_challenge_create = start.elapsed();
+    print_interval(
+        "advice challenge create",
+        advice_challenge_create - instance_create,
+    );
+
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: ChallengeTheta<_> = transcript.squeeze_challenge_scalar();
 
@@ -434,6 +447,8 @@ where
                 .collect()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let lookups_create = start.elapsed();
+    print_interval("lookups create", lookups_create - advice_challenge_create);
 
     // Sample beta challenge
     let beta: ChallengeBeta<_> = transcript.squeeze_challenge_scalar();
@@ -460,6 +475,9 @@ where
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
+
+    let permutations_create = start.elapsed();
+    print_interval("permutations create", permutations_create - lookups_create);
 
     let lookups: Vec<Vec<lookup::prover::Committed<Scheme::Curve>>> = lookups
         .into_iter()
@@ -499,6 +517,12 @@ where
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
+
+    let lookups_and_shuffles_create = start.elapsed();
+    print_interval(
+        "lookups_and_shuffles create",
+        lookups_and_shuffles_create - permutations_create,
+    );
 
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
     let vanishing = vanishing::Argument::commit(params, domain, &mut rng, transcript)?;
@@ -691,6 +715,8 @@ where
         // We query the h(X) polynomial at x
         .chain(vanishing.open(x));
 
+    let pre_duration = start.elapsed();
+    print_interval("Prover before inner call", pre_duration);
     let prover = P::new(params);
     prover
         .create_proof(rng, transcript, instances)

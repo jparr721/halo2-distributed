@@ -433,6 +433,33 @@ pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mu
     });
 }
 
+/// This utility function will parallelize an operation that is to be
+/// performed over a mutable slice.
+pub fn distribute<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) {
+    let f = &f;
+    let total_iters = v.len();
+    let num_threads = multicore::current_num_threads();
+    let base_chunk_size = total_iters / num_threads;
+    let cutoff_chunk_id = total_iters % num_threads;
+    let split_pos = cutoff_chunk_id * (base_chunk_size + 1);
+    let (v_hi, v_lo) = v.split_at_mut(split_pos);
+
+    // Skip special-case: number of iterations is cleanly divided by number of threads.
+    if cutoff_chunk_id != 0 {
+        for (chunk_id, chunk) in v_hi.chunks_exact_mut(base_chunk_size + 1).enumerate() {
+            let offset = chunk_id * (base_chunk_size + 1);
+            f(chunk, offset);
+        }
+    }
+    // Skip special-case: less iterations than number of threads.
+    if base_chunk_size != 0 {
+        for (chunk_id, chunk) in v_lo.chunks_exact_mut(base_chunk_size).enumerate() {
+            let offset = split_pos + (chunk_id * base_chunk_size);
+            f(chunk, offset);
+        }
+    }
+}
+
 fn log2_floor(num: usize) -> u32 {
     assert!(num > 0);
 

@@ -16,13 +16,13 @@ use crate::transcript::{EncodedChallenge, TranscriptWrite};
 use ff::{Field, PrimeField};
 use group::Curve;
 use halo2curves::pairing::Engine;
-use logging_timer::time;
 use rand_core::RngCore;
 use rayon::prelude::*;
 use std::fmt::Debug;
 use std::io::{self, Write};
 use std::marker::PhantomData;
 use std::ops::MulAssign;
+use std::time::Instant;
 
 fn div_by_vanishing<F: Field>(poly: Polynomial<F, Coeff>, roots: &[F]) -> Vec<F> {
     let poly = roots
@@ -117,7 +117,6 @@ where
     }
 
     /// Create a multi-opening proof
-    #[time("info")]
     fn create_proof<
         'com,
         Ch: EncodedChallenge<E::G1Affine>,
@@ -134,6 +133,7 @@ where
         I: IntoIterator<Item = ProverQuery<'com, E::G1Affine>> + Clone,
         R: RngCore,
     {
+        let start = Instant::now();
         // TODO: explore if it is safe to use same challenge
         // for different sets that are already combined with anoter challenge
         let y: ChallengeY<_> = transcript.squeeze_challenge_scalar();
@@ -282,6 +282,10 @@ where
 
         let h = self.params.commit(&h_x, Blind::default()).to_affine();
         transcript.write_point(h)?;
+        println!(
+            "Took {:?} to run the shplonk proof creation",
+            start.elapsed()
+        );
 
         Ok(())
     }
