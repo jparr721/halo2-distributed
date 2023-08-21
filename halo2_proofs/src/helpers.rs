@@ -2,6 +2,7 @@ use crate::poly::Polynomial;
 use ff::PrimeField;
 use halo2curves::{pairing::Engine, serde::SerdeObject, CurveAffine};
 use std::io;
+use std::time::Instant;
 
 /// This enum specifies how various types are serialized and deserialized.
 #[derive(Clone, Copy, Debug)]
@@ -143,4 +144,18 @@ pub(crate) fn write_polynomial_slice<W: io::Write, F: SerdePrimeField, B>(
 pub(crate) fn polynomial_slice_byte_length<F: PrimeField, B>(slice: &[Polynomial<F, B>]) -> usize {
     let field_len = F::default().to_repr().as_ref().len();
     4 + slice.len() * (4 + field_len * slice.get(0).map(|poly| poly.len()).unwrap_or(0))
+}
+
+/// Times a code block.
+#[macro_export]
+macro_rules! timer {
+    ($name:expr, $code:block) => {{
+        let start = Instant::now();
+        let result = $code;
+        let elapsed = start.elapsed();
+
+        println!("[HALO 2] - {} took: {:?}", $name, elapsed);
+
+        result
+    }};
 }

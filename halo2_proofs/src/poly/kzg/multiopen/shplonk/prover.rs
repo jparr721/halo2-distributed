@@ -133,7 +133,6 @@ where
         I: IntoIterator<Item = ProverQuery<'com, E::G1Affine>> + Clone,
         R: RngCore,
     {
-        let start = Instant::now();
         // TODO: explore if it is safe to use same challenge
         // for different sets that are already combined with anoter challenge
         let y: ChallengeY<_> = transcript.squeeze_challenge_scalar();
@@ -282,10 +281,6 @@ where
 
         let h = self.params.commit(&h_x, Blind::default()).to_affine();
         transcript.write_point(h)?;
-        println!(
-            "Took {:?} to run the shplonk proof creation",
-            start.elapsed()
-        );
 
         Ok(())
     }
