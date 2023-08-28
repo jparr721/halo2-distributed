@@ -24,6 +24,20 @@ pub struct KeygenTaskKZG<'a, C: CurveAffine> {
 }
 
 impl<'a, C: CurveAffine> KeygenTaskKZG<'a, C> {
+    pub fn new(
+        params: ParamsKZG<Bn256>,
+        domain: &'a EvaluationDomain<C::Scalar>,
+        p: &'a Argument,
+        mapping: Vec<Vec<(usize, usize)>>,
+    ) -> Self {
+        KeygenTaskKZG {
+            params,
+            domain,
+            p,
+            mapping,
+        }
+    }
+
     pub fn zero(&self) -> <<C as CurveAffine>::CurveExt as CurveExt>::ScalarExt {
         C::Scalar::ZERO
     }

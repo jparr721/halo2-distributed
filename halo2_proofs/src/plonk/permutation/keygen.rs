@@ -12,6 +12,7 @@ use std::time::Instant;
 use super::{Argument, ProvingKey, VerifyingKey};
 use crate::{
     arithmetic::{parallelize, CurveAffine},
+    distributed::dispatcher::Dispatcher,
     plonk::{Any, Column, Error},
     poly::{
         commitment::{Blind, CommitmentScheme, Params},
@@ -457,31 +458,6 @@ pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
                 .to_affine(),
         );
     }
-
-    VerifyingKey { commitments }
-}
-
-pub(crate) fn build_vk_distributed<'params, C: CurveAffine, P: Params<'params, C>>(
-    params: &P,
-    domain: &EvaluationDomain<C::Scalar>,
-    p: &Argument,
-    mapping: impl Fn(usize, usize) -> (usize, usize) + Sync,
-) -> VerifyingKey<C> {
-    // Compute [omega^0, omega^1, ..., omega^{params.n - 1}]
-    let omega_powers = vec![C::Scalar::ZERO; params.n() as usize];
-    // let deltaomega = vec![omega_powers; p.columns.len()];
-    // let permutations = vec![domain.empty_lagrange(); p.columns.len()];
-
-    // let payload: VkDistributedPayload<C> = VkDistributedPayload {
-    //     omega_powers,
-    //     deltaomega,
-    //     permutations,
-    // };
-
-    // Pre-compute commitments for the URS.
-    let mut commitments = Vec::with_capacity(p.columns.len());
-
-    // join_all()
 
     VerifyingKey { commitments }
 }

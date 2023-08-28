@@ -273,6 +273,72 @@ where
     ))
 }
 
+/// Generate a `VerifyingKey` from an instance of `Circuit`.
+pub async fn keygen_vk_distributed<'params, C, P, ConcreteCircuit>(
+    params: &P,
+    circuit: &ConcreteCircuit,
+) -> Result<VerifyingKey<C>, Error>
+where
+    C: CurveAffine,
+    P: Params<'params, C>,
+    ConcreteCircuit: Circuit<C::Scalar>,
+    C::Scalar: FromUniformBytes<64>,
+{
+    let (domain, cs, config) = create_domain::<C, ConcreteCircuit>(
+        params.k(),
+        #[cfg(feature = "circuit-params")]
+        circuit.params(),
+    );
+
+    if (params.n() as usize) < cs.minimum_rows() {
+        return Err(Error::not_enough_rows_available(params.k()));
+    }
+
+    let mut assembly: Assembly<C::Scalar> = Assembly {
+        k: params.k(),
+        fixed: vec![domain.empty_lagrange_assigned(); cs.num_fixed_columns],
+        permutation: permutation::keygen::Assembly::new(params.n() as usize, &cs.permutation),
+        selectors: vec![vec![false; params.n() as usize]; cs.num_selectors],
+        usable_rows: 0..params.n() as usize - (cs.blinding_factors() + 1),
+        _marker: std::marker::PhantomData,
+    };
+
+    // Synthesize the circuit to obtain URS
+    ConcreteCircuit::FloorPlanner::synthesize(
+        &mut assembly,
+        circuit,
+        config,
+        cs.constants.clone(),
+    )?;
+
+    let mut fixed = batch_invert_assigned(assembly.fixed);
+    let (cs, selector_polys) = cs.compress_selectors(assembly.selectors.clone());
+    fixed.extend(
+        selector_polys
+            .into_iter()
+            .map(|poly| domain.lagrange_from_vec(poly)),
+    );
+
+    let permutation_vk = timer!("Generation of permutation vk", {
+        assembly
+            .permutation
+            .build_vk(params, &domain, &cs.permutation)
+    });
+
+    let fixed_commitments = fixed
+        .iter()
+        .map(|poly| params.commit_lagrange(poly, Blind::default()).to_affine())
+        .collect();
+
+    Ok(VerifyingKey::from_parts(
+        domain,
+        fixed_commitments,
+        permutation_vk,
+        cs,
+        assembly.selectors,
+    ))
+}
+
 /// Generate a `ProvingKey` from a `VerifyingKey` and an instance of `Circuit`.
 pub fn keygen_pk<'params, C, P, ConcreteCircuit>(
     params: &P,

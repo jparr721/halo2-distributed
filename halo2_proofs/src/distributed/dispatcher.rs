@@ -1,11 +1,27 @@
 //! Dispatcher api
 use futures::future::join_all;
+use halo2curves::{
+    bn256::{Bn256, G1Affine},
+    CurveAffine,
+};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use once_cell::sync::Lazy;
 use serde_derive::{Deserialize, Serialize};
 use std::{io, net::SocketAddr, thread, time::Duration};
 use stubborn_io::{tokio::StubbornIo, StubbornTcpStream};
-use tokio::net::TcpStream;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+};
+
+use crate::{
+    plonk::{
+        create_domain, permutation::Argument, permutation::ProvingKey, permutation::VerifyingKey,
+    },
+    poly::{commitment::Params, kzg::commitment::ParamsKZG, EvaluationDomain},
+};
+
+use super::{net::to_bytes, plonk::permutation::keygen::KeygenTaskKZG, utils::CastSlice};
 
 pub static WORKERS: Lazy<[SocketAddr; 2]> = Lazy::new(|| {
     [
@@ -42,9 +58,54 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
-    pub async fn keygen(&self) {}
+    pub async fn new() -> Self {
+        let mut dispatcher = Dispatcher {
+            workers: Vec::new(),
+        };
 
-    pub async fn init_worker_pool(&mut self) {
+        // Set up the active worker connections
+        dispatcher.init_worker_pool().await;
+        dispatcher
+    }
+
+    /// Initiates the distributed keygen operation.
+    pub async fn keygen<'params, C: CurveAffine>(
+        &mut self,
+        params: &ParamsKZG<Bn256>,
+        domain: &EvaluationDomain<C::Scalar>,
+        p: &Argument,
+        mapping: Vec<Vec<(usize, usize)>>,
+    ) -> Vec<G1Affine> {
+        let task = KeygenTaskKZG::<C>::new(params.clone(), domain, p, mapping);
+        let commitments = join_all(self.workers.iter_mut().map(|worker| async {
+            // Dump the method over
+            worker.write_u8(WorkerMethod::KeyGen as u8).await.unwrap();
+
+            // Drop the payload
+            worker
+                .write_all(to_bytes(task.clone()).as_slice())
+                .await
+                .unwrap();
+
+            // Flush the buffer
+            worker.flush().await.unwrap();
+
+            // Prepare to receive the commitments
+            let mut cs = [0u8; core::mem::size_of::<G1Affine>()];
+
+            // Read the output from the worker
+            worker.read_exact(&mut cs).await.unwrap();
+
+            // NOTE: This [0] will be removed later when we recieve from multiple sources
+            // This method will need to handle proper ordering as well of the commitments
+            cs.cast::<G1Affine>()[0]
+        }))
+        .await;
+
+        commitments
+    }
+
+    async fn init_worker_pool(&mut self) {
         self.workers = join_all(WORKERS.iter().map(|worker| async move {
             let stream = loop {
                 match StubbornTcpStream::connect(worker.clone()).await {
@@ -57,6 +118,6 @@ impl Dispatcher {
             stream.set_nodelay(true).unwrap();
             stream
         }))
-        .await;
+        .await
     }
 }
