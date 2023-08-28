@@ -147,30 +147,30 @@ pub fn small_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::C
 pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
 
-    let num_threads = multicore::current_num_threads();
-    if coeffs.len() > num_threads {
-        let chunk = coeffs.len() / num_threads;
-        let num_chunks = coeffs.chunks(chunk).len();
-        let mut results = vec![C::Curve::identity(); num_chunks];
-        multicore::scope(|scope| {
-            let chunk = coeffs.len() / num_threads;
+    // let num_threads = multicore::current_num_threads();
+    // if coeffs.len() > num_threads {
+    //     let chunk = coeffs.len() / num_threads;
+    //     let num_chunks = coeffs.chunks(chunk).len();
+    //     let mut results = vec![C::Curve::identity(); num_chunks];
+    //     multicore::scope(|scope| {
+    //         let chunk = coeffs.len() / num_threads;
 
-            for ((coeffs, bases), acc) in coeffs
-                .chunks(chunk)
-                .zip(bases.chunks(chunk))
-                .zip(results.iter_mut())
-            {
-                scope.spawn(move |_| {
-                    multiexp_serial(coeffs, bases, acc);
-                });
-            }
-        });
-        results.iter().fold(C::Curve::identity(), |a, b| a + b)
-    } else {
-        let mut acc = C::Curve::identity();
-        multiexp_serial(coeffs, bases, &mut acc);
-        acc
-    }
+    //         for ((coeffs, bases), acc) in coeffs
+    //             .chunks(chunk)
+    //             .zip(bases.chunks(chunk))
+    //             .zip(results.iter_mut())
+    //         {
+    //             scope.spawn(move |_| {
+    //                 multiexp_serial(coeffs, bases, acc);
+    //             });
+    //         }
+    //     });
+    //     results.iter().fold(C::Curve::identity(), |a, b| a + b)
+    // } else {
+    let mut acc = C::Curve::identity();
+    multiexp_serial(coeffs, bases, &mut acc);
+    acc
+    // }
 }
 
 /// Performs a radix-$2$ Fast-Fourier Transformation (FFT) on a vector of size
@@ -407,30 +407,38 @@ pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mu
     // each thread. The size of the chunks is unspecified in this case."
     // This implies chunks are the same size ±1
 
-    let f = &f;
-    let total_iters = v.len();
-    let num_threads = multicore::current_num_threads();
-    let base_chunk_size = total_iters / num_threads;
-    let cutoff_chunk_id = total_iters % num_threads;
-    let split_pos = cutoff_chunk_id * (base_chunk_size + 1);
-    let (v_hi, v_lo) = v.split_at_mut(split_pos);
+    #[cfg(not(feature = "distributed"))]
+    {
+        let f = &f;
+        let total_iters = v.len();
+        let num_threads = multicore::current_num_threads();
+        let base_chunk_size = total_iters / num_threads;
+        let cutoff_chunk_id = total_iters % num_threads;
+        let split_pos = cutoff_chunk_id * (base_chunk_size + 1);
+        let (v_hi, v_lo) = v.split_at_mut(split_pos);
 
-    multicore::scope(|scope| {
-        // Skip special-case: number of iterations is cleanly divided by number of threads.
-        if cutoff_chunk_id != 0 {
-            for (chunk_id, chunk) in v_hi.chunks_exact_mut(base_chunk_size + 1).enumerate() {
-                let offset = chunk_id * (base_chunk_size + 1);
-                scope.spawn(move |_| f(chunk, offset));
+        multicore::scope(|scope| {
+            // Skip special-case: number of iterations is cleanly divided by number of threads.
+            if cutoff_chunk_id != 0 {
+                for (chunk_id, chunk) in v_hi.chunks_exact_mut(base_chunk_size + 1).enumerate() {
+                    let offset = chunk_id * (base_chunk_size + 1);
+                    scope.spawn(move |_| f(chunk, offset));
+                }
             }
-        }
-        // Skip special-case: less iterations than number of threads.
-        if base_chunk_size != 0 {
-            for (chunk_id, chunk) in v_lo.chunks_exact_mut(base_chunk_size).enumerate() {
-                let offset = split_pos + (chunk_id * base_chunk_size);
-                scope.spawn(move |_| f(chunk, offset));
+            // Skip special-case: less iterations than number of threads.
+            if base_chunk_size != 0 {
+                for (chunk_id, chunk) in v_lo.chunks_exact_mut(base_chunk_size).enumerate() {
+                    let offset = split_pos + (chunk_id * base_chunk_size);
+                    scope.spawn(move |_| f(chunk, offset));
+                }
             }
-        }
-    });
+        });
+    }
+
+    #[cfg(feature = "distributed")]
+    {
+        distribute(v, f);
+    }
 }
 
 /// This utility function will parallelize an operation that is to be

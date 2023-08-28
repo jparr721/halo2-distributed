@@ -3,17 +3,6 @@ use std::{
     slice::{from_raw_parts, from_raw_parts_mut},
 };
 
-#[macro_export]
-macro_rules! timer {
-    ($name:expr, $task:expr) => {{
-        use ark_std::end_timer;
-        let _timer = ark_std::start_timer!(|| $name);
-        let _result = $task;
-        ark_std::end_timer!(_timer);
-        _result
-    }};
-}
-
 pub trait CastSlice<From>: AsRef<[From]> {
     #[inline]
     fn cast<To>(&self) -> &[To] {

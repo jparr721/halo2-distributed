@@ -22,7 +22,9 @@ use crate::{
         commitment::{Blind, Params, MSM},
         EvaluationDomain,
     },
+    timer,
 };
+use std::time::Instant;
 
 pub(crate) fn create_domain<C, ConcreteCircuit>(
     k: u32,
@@ -251,9 +253,11 @@ where
             .map(|poly| domain.lagrange_from_vec(poly)),
     );
 
-    let permutation_vk = assembly
-        .permutation
-        .build_vk(params, &domain, &cs.permutation);
+    let permutation_vk = timer!("Generation of permutation vk", {
+        assembly
+            .permutation
+            .build_vk(params, &domain, &cs.permutation)
+    });
 
     let fixed_commitments = fixed
         .iter()

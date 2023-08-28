@@ -1,11 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use ff::{Field, PrimeField};
+use futures::future::join_all;
 use group::Curve;
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator, ParallelSliceMut,
 };
+use std::time::Instant;
 
 use super::{Argument, ProvingKey, VerifyingKey};
 use crate::{
@@ -13,9 +15,11 @@ use crate::{
     plonk::{Any, Column, Error},
     poly::{
         commitment::{Blind, CommitmentScheme, Params},
-        EvaluationDomain,
+        EvaluationDomain, LagrangeCoeff, Polynomial,
     },
+    timer,
 };
+use serde_derive::{Deserialize, Serialize};
 
 #[cfg(not(feature = "thread-safe-region"))]
 /// Struct that accumulates all the necessary data in order to construct the permutation argument.
@@ -116,7 +120,9 @@ impl Assembly {
         domain: &EvaluationDomain<C::Scalar>,
         p: &Argument,
     ) -> VerifyingKey<C> {
-        build_vk(params, domain, p, |i, j| self.mapping[i][j])
+        timer!("keygen.rs build_vk", {
+            build_vk(params, domain, p, |i, j| self.mapping[i][j])
+        })
     }
 
     pub(crate) fn build_pk<'params, C: CurveAffine, P: Params<'params, C>>(
@@ -400,7 +406,7 @@ pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
 ) -> VerifyingKey<C> {
     // Compute [omega^0, omega^1, ..., omega^{params.n - 1}]
     let mut omega_powers = vec![C::Scalar::ZERO; params.n() as usize];
-    {
+    timer!("keygen.rs omega_powers", {
         let omega = domain.get_omega();
         parallelize(&mut omega_powers, |o, start| {
             let mut cur = omega.pow_vartime(&[start as u64]);
@@ -409,11 +415,11 @@ pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
                 cur *= &omega;
             }
         })
-    }
+    });
 
     // Compute [omega_powers * \delta^0, omega_powers * \delta^1, ..., omega_powers * \delta^m]
     let mut deltaomega = vec![omega_powers; p.columns.len()];
-    {
+    timer!("keygen.rs deltaomega", {
         parallelize(&mut deltaomega, |o, start| {
             let mut cur = C::Scalar::DELTA.pow_vartime(&[start as u64]);
             for omega_powers in o.iter_mut() {
@@ -423,12 +429,12 @@ pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
                 cur *= &<C::Scalar as PrimeField>::DELTA;
             }
         });
-    }
+    });
 
     // Computes the permutation polynomial based on the permutation
     // description in the assembly.
     let mut permutations = vec![domain.empty_lagrange(); p.columns.len()];
-    {
+    timer!("keygen.rs permutations", {
         parallelize(&mut permutations, |o, start| {
             for (x, permutation_poly) in o.iter_mut().enumerate() {
                 let i = start + x;
@@ -438,10 +444,13 @@ pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
                 }
             }
         });
-    }
+    });
 
+    // TIME! This is the rate-limiting step
     // Pre-compute commitments for the URS.
     let mut commitments = Vec::with_capacity(p.columns.len());
+
+    println!("Got {} permutations", permutations.len());
     for permutation in &permutations {
         // Compute commitment to permutation polynomial
         commitments.push(
@@ -450,6 +459,31 @@ pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
                 .to_affine(),
         );
     }
+
+    VerifyingKey { commitments }
+}
+
+pub(crate) fn build_vk_distributed<'params, C: CurveAffine, P: Params<'params, C>>(
+    params: &P,
+    domain: &EvaluationDomain<C::Scalar>,
+    p: &Argument,
+    mapping: impl Fn(usize, usize) -> (usize, usize) + Sync,
+) -> VerifyingKey<C> {
+    // Compute [omega^0, omega^1, ..., omega^{params.n - 1}]
+    let omega_powers = vec![C::Scalar::ZERO; params.n() as usize];
+    // let deltaomega = vec![omega_powers; p.columns.len()];
+    // let permutations = vec![domain.empty_lagrange(); p.columns.len()];
+
+    // let payload: VkDistributedPayload<C> = VkDistributedPayload {
+    //     omega_powers,
+    //     deltaomega,
+    //     permutations,
+    // };
+
+    // Pre-compute commitments for the URS.
+    let mut commitments = Vec::with_capacity(p.columns.len());
+
+    // join_all()
 
     VerifyingKey { commitments }
 }

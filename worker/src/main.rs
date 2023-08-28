@@ -1,7 +1,10 @@
-use halo2_proofs_distributed::dispatcher::{WorkerMethod, WorkerStatus};
+use futures::io::ReadHalf;
+use halo2_proofs::distributed::dispatcher::{Taskable, WorkerMethod, WorkerStatus};
+use halo2_proofs::distributed::plonk::permutation::keygen::KeygenTask;
+use halo2_proofs::distributed::utils::CastSlice;
 use once_cell::sync::Lazy;
 use std::{io, net::SocketAddr};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpListener;
 
 pub static WORKERS: Lazy<[SocketAddr; 2]> = Lazy::new(|| {
@@ -13,6 +16,7 @@ pub static WORKERS: Lazy<[SocketAddr; 2]> = Lazy::new(|| {
 
 pub struct PlonkImplInner {}
 
+#[derive(Clone, Debug)]
 pub struct Worker {
     id: usize,
     // inner: Arc<PlonkImplInner>,
@@ -43,19 +47,21 @@ impl Worker {
             // Set nodelay to always just send whatever data is available.
             stream.set_nodelay(true).unwrap();
 
+            let this_worker = self.clone();
+
             tokio::spawn(async move {
                 loop {
                     let (read, write) = stream.split();
 
                     let mut req = BufReader::new(read);
-                    let mut res = BufWriter::new(write);
+                    let res = BufWriter::new(write);
 
+                    // This should not just unpack the method, it should unpack the entire type.
                     match req.read_u8().await {
                         Ok(method) => {
                             let method: WorkerMethod = method.try_into().unwrap();
                             println!("{} -> {}: {}", peer_addr, addr, method);
-                            res.write_u8(WorkerStatus::Ok as u8).await?;
-                            res.flush().await?;
+                            this_worker.handle(method, req, res).await.unwrap();
                         }
                         Err(_) => {
                             println!("Connection from {} disconnected prematurely", addr.ip());
@@ -67,6 +73,38 @@ impl Worker {
             });
         }
 
+        Ok(())
+    }
+
+    async fn handle<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+        &self,
+        method: WorkerMethod,
+        req: BufReader<R>,
+        res: BufWriter<W>,
+    ) -> io::Result<()> {
+        match method {
+            WorkerMethod::KeyGenCommit => self.commit(req, res).await,
+        }
+    }
+
+    async fn commit<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+        &self,
+        mut req: BufReader<R>,
+        mut res: BufWriter<W>,
+    ) -> io::Result<()> {
+        // Allocate an empty buffer
+        let mut buf = [0u8; core::mem::size_of::<KeygenTask>()];
+
+        // Suck down the rest of the payload
+        req.read_exact(&mut buf).await.unwrap();
+
+        // Cast the buffer to the distributed request type.
+        let buf = buf.cast::<KeygenTask>();
+
+        // Handle the payload
+
+        res.write_u8(WorkerStatus::Ok as u8).await?;
+        res.flush().await?;
         Ok(())
     }
 }
