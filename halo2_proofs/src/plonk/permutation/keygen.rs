@@ -449,8 +449,6 @@ pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
     // TIME! This is the rate-limiting step
     // Pre-compute commitments for the URS.
     let mut commitments = Vec::with_capacity(p.columns.len());
-
-    println!("Got {} permutations", permutations.len());
     for permutation in &permutations {
         // Compute commitment to permutation polynomial
         commitments.push(

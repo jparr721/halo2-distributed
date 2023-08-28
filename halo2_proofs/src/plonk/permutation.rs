@@ -80,6 +80,10 @@ impl Argument {
     pub fn get_columns(&self) -> Vec<Column<Any>> {
         self.columns.clone()
     }
+
+    pub fn ncolumns(&self) -> usize {
+        self.columns.len()
+    }
 }
 
 /// The verifying key for a single permutation argument.
@@ -135,7 +139,7 @@ impl<C: SerdeCurveAffine> ProvingKey<C>
 where
     C::Scalar: SerdePrimeField,
 {
-    /// Reads proving key for a single permutation argument from buffer using `Polynomial::read`.  
+    /// Reads proving key for a single permutation argument from buffer using `Polynomial::read`.
     pub(super) fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let permutations = read_polynomial_vec(reader, format)?;
         let polys = read_polynomial_vec(reader, format)?;
@@ -147,7 +151,7 @@ where
         })
     }
 
-    /// Writes proving key for a single permutation argument to buffer using `Polynomial::write`.  
+    /// Writes proving key for a single permutation argument to buffer using `Polynomial::write`.
     pub(super) fn write<W: io::Write>(
         &self,
         writer: &mut W,

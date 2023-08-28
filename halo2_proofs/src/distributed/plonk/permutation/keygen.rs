@@ -1,26 +1,34 @@
 //! Keygen Definitions
 
+use ff::{Field, PrimeField};
+use halo2curves::{bn256::Bn256, CurveExt};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::distributed::{
-    dispatcher::{Taskable, WorkerMethod},
-    net::{from_bytes, to_bytes},
+use crate::{
+    arithmetic::{parallelize, CurveAffine},
+    distributed::{
+        dispatcher::{Taskable, WorkerMethod},
+        net::{from_bytes, to_bytes},
+    },
+    plonk::permutation::Argument,
+    poly::{commitment::Params, kzg::commitment::ParamsKZG, EvaluationDomain},
 };
 
 /// Distributed request to perform keygen
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct KeygenTask {}
+#[derive(Debug, Clone)]
+pub struct KeygenTaskKZG<'a, C: CurveAffine> {
+    pub params: ParamsKZG<Bn256>,
+    pub domain: &'a EvaluationDomain<C::Scalar>,
+    pub p: &'a Argument,
+    pub mapping: Vec<Vec<(usize, usize)>>,
+}
 
-impl Taskable for KeygenTask {
-    fn method(&self) -> WorkerMethod {
-        WorkerMethod::KeyGenCommit
+impl<'a, C: CurveAffine> KeygenTaskKZG<'a, C> {
+    pub fn zero(&self) -> <<C as CurveAffine>::CurveExt as CurveExt>::ScalarExt {
+        C::Scalar::ZERO
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
-        to_bytes(self)
-    }
-
-    fn from_bytes(&self, bytes: Vec<u8>) -> Self {
-        from_bytes(&bytes)
+    pub fn delta(&self) -> <<C as CurveAffine>::CurveExt as CurveExt>::ScalarExt {
+        C::Scalar::DELTA
     }
 }
