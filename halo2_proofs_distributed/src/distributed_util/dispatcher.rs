@@ -23,10 +23,10 @@ use crate::{
 
 use super::{net::to_bytes, plonk::permutation::keygen::KeygenTaskKZG, utils::CastSlice};
 
-pub static WORKERS: Lazy<[SocketAddr; 2]> = Lazy::new(|| {
+pub static WORKERS: Lazy<[SocketAddr; 1]> = Lazy::new(|| {
     [
         "127.0.0.1:8081".parse().unwrap(),
-        "127.0.0.1:8082".parse().unwrap(),
+        // "127.0.0.1:8082".parse().unwrap(),
     ]
 });
 

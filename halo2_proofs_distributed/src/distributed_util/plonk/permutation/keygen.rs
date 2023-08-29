@@ -6,7 +6,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     arithmetic::{parallelize, CurveAffine},
-    distributed::{
+    distributed_util::{
         dispatcher::{Taskable, WorkerMethod},
         net::{from_bytes, to_bytes},
     },

@@ -20,6 +20,12 @@ use super::{
 use crate::{
     arithmetic::{parallelize, CurveAffine},
     circuit::{layouter::SyncDeps, Value},
+    distributed_util::{
+        dispatcher::{Dispatcher, WorkerMethod},
+        net::to_bytes,
+        plonk::permutation::keygen::KeygenTaskKZG,
+        utils::CastSlice,
+    },
     poly::{
         batch_invert_assigned,
         commitment::{Blind, Params, MSM},
