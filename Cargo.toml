@@ -4,5 +4,6 @@ members = [
     "halo2_gadgets",
     "halo2_proofs",
     "halo2_proofs_distributed",
+    "halo2_gadgets_distributed",
     "worker",
 ]

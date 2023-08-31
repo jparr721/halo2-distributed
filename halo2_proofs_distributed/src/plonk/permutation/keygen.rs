@@ -7,6 +7,7 @@ use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator, ParallelSliceMut,
 };
+use serde_derive::{Deserialize, Serialize};
 use std::time::Instant;
 
 use super::{Argument, ProvingKey, VerifyingKey};
@@ -19,16 +20,16 @@ use crate::{
     },
     timer,
 };
-use serde_derive::{Deserialize, Serialize};
 
 #[cfg(not(feature = "thread-safe-region"))]
 /// Struct that accumulates all the necessary data in order to construct the permutation argument.
+// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Assembly {
     /// Columns that participate on the copy permutation argument.
     columns: Vec<Column<Any>>,
     /// Mapping of the actual copies done.
-    pub(crate) mapping: Vec<Vec<(usize, usize)>>,
+    mapping: Vec<Vec<(usize, usize)>>,
     /// Some aux data used to swap positions directly when sorting.
     aux: Vec<Vec<(usize, usize)>>,
     /// More aux data
