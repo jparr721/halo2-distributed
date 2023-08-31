@@ -23,8 +23,7 @@ use crate::{
 
 #[cfg(not(feature = "thread-safe-region"))]
 /// Struct that accumulates all the necessary data in order to construct the permutation argument.
-// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Assembly {
     /// Columns that participate on the copy permutation argument.
     columns: Vec<Column<Any>>,

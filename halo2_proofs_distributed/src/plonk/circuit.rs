@@ -9,6 +9,7 @@ use core::cmp::max;
 use core::ops::{Add, Mul};
 use ff::Field;
 use sealed::SealedPhase;
+use serde_derive::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
@@ -28,7 +29,7 @@ pub trait ColumnType:
 }
 
 /// A column with an index and type
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Column<C: ColumnType> {
     index: usize,
     column_type: C,
@@ -95,8 +96,10 @@ impl<C: ColumnType> PartialOrd for Column<C> {
 }
 
 pub(crate) mod sealed {
+    use serde_derive::{Deserialize, Serialize};
+
     /// Phase of advice column
-    #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
     pub struct Phase(pub(super) u8);
 
     impl Phase {
@@ -123,7 +126,7 @@ pub trait Phase: SealedPhase {}
 impl<P: SealedPhase> Phase for P {}
 
 /// First phase
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FirstPhase;
 
 impl SealedPhase for super::FirstPhase {
@@ -133,7 +136,7 @@ impl SealedPhase for super::FirstPhase {
 }
 
 /// Second phase
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SecondPhase;
 
 impl SealedPhase for super::SecondPhase {
@@ -143,7 +146,7 @@ impl SealedPhase for super::SecondPhase {
 }
 
 /// Third phase
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ThirdPhase;
 
 impl SealedPhase for super::ThirdPhase {
@@ -153,7 +156,7 @@ impl SealedPhase for super::ThirdPhase {
 }
 
 /// An advice column
-#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Advice {
     pub(crate) phase: sealed::Phase,
 }
@@ -192,15 +195,15 @@ impl std::fmt::Debug for Advice {
 }
 
 /// A fixed column
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Fixed;
 
 /// An instance column
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Instance;
 
 /// An enum over the Advice, Fixed, Instance structs
-#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Any {
     /// An Advice variant
     Advice(Advice),
