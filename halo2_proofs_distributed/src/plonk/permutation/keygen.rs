@@ -13,6 +13,7 @@ use std::time::Instant;
 use super::{Argument, ProvingKey, VerifyingKey};
 use crate::{
     arithmetic::{parallelize, CurveAffine},
+    distributed_util::dispatcher::Dispatcher,
     plonk::{Any, Column, Error},
     poly::{
         commitment::{Blind, CommitmentScheme, Params},
@@ -114,14 +115,15 @@ impl Assembly {
         Ok(())
     }
 
-    pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
+    pub(crate) async fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
         self,
-        params: &P,
-        domain: &EvaluationDomain<C::Scalar>,
-        p: &Argument,
+        params: &'params P,
+        domain: &'params EvaluationDomain<C::Scalar>,
+        p: &'params Argument,
+        dispatcher: &mut Dispatcher,
     ) -> VerifyingKey<C> {
         timer!("keygen.rs build_vk", {
-            build_vk(params, domain, p, |i, j| self.mapping[i][j])
+            build_vk(params, domain, p, &self.mapping, dispatcher).await
         })
     }
 
@@ -398,65 +400,13 @@ pub(crate) fn build_pk<'params, C: CurveAffine, P: Params<'params, C>>(
     }
 }
 
-pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
-    params: &P,
-    domain: &EvaluationDomain<C::Scalar>,
-    p: &Argument,
-    mapping: impl Fn(usize, usize) -> (usize, usize) + Sync,
+pub(crate) async fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
+    params: &'params P,
+    domain: &'params EvaluationDomain<C::Scalar>,
+    p: &'params Argument,
+    mapping: &Vec<Vec<(usize, usize)>>,
+    dispatcher: &mut Dispatcher,
 ) -> VerifyingKey<C> {
-    // Compute [omega^0, omega^1, ..., omega^{params.n - 1}]
-    let mut omega_powers = vec![C::Scalar::ZERO; params.n() as usize];
-    timer!("keygen.rs omega_powers", {
-        let omega = domain.get_omega();
-        parallelize(&mut omega_powers, |o, start| {
-            let mut cur = omega.pow_vartime(&[start as u64]);
-            for v in o.iter_mut() {
-                *v = cur;
-                cur *= &omega;
-            }
-        })
-    });
-
-    // Compute [omega_powers * \delta^0, omega_powers * \delta^1, ..., omega_powers * \delta^m]
-    let mut deltaomega = vec![omega_powers; p.columns.len()];
-    timer!("keygen.rs deltaomega", {
-        parallelize(&mut deltaomega, |o, start| {
-            let mut cur = C::Scalar::DELTA.pow_vartime(&[start as u64]);
-            for omega_powers in o.iter_mut() {
-                for v in omega_powers {
-                    *v *= &cur;
-                }
-                cur *= &<C::Scalar as PrimeField>::DELTA;
-            }
-        });
-    });
-
-    // Computes the permutation polynomial based on the permutation
-    // description in the assembly.
-    let mut permutations = vec![domain.empty_lagrange(); p.columns.len()];
-    timer!("keygen.rs permutations", {
-        parallelize(&mut permutations, |o, start| {
-            for (x, permutation_poly) in o.iter_mut().enumerate() {
-                let i = start + x;
-                for (j, p) in permutation_poly.iter_mut().enumerate() {
-                    let (permuted_i, permuted_j) = mapping(i, j);
-                    *p = deltaomega[permuted_i][permuted_j];
-                }
-            }
-        });
-    });
-
-    // TIME! This is the rate-limiting step
-    // Pre-compute commitments for the URS.
-    let mut commitments = Vec::with_capacity(p.columns.len());
-    for permutation in &permutations {
-        // Compute commitment to permutation polynomial
-        commitments.push(
-            params
-                .commit_lagrange(permutation, Blind::default())
-                .to_affine(),
-        );
-    }
-
+    let commitments = dispatcher.keygen(params, domain, p, mapping).await;
     VerifyingKey { commitments }
 }

@@ -21,7 +21,7 @@ use crate::{
     arithmetic::{parallelize, CurveAffine},
     circuit::{layouter::SyncDeps, Value},
     distributed_util::{
-        dispatcher::{Dispatcher, WorkerMethod},
+        dispatcher::{self, Dispatcher, WorkerMethod},
         net::to_bytes,
         plonk::permutation::keygen::KeygenTaskKZG,
         utils::CastSlice,
@@ -218,9 +218,10 @@ impl<F: Field> Assignment<F> for Assembly<F> {
 }
 
 /// Generate a `VerifyingKey` from an instance of `Circuit`.
-pub fn keygen_vk<'params, C, P, ConcreteCircuit>(
-    params: &P,
+pub async fn keygen_vk<'params, C, P, ConcreteCircuit>(
+    params: &'params P,
     circuit: &ConcreteCircuit,
+    dispatcher: &mut Dispatcher,
 ) -> Result<VerifyingKey<C>, Error>
 where
     C: CurveAffine,
@@ -266,7 +267,8 @@ where
     let permutation_vk = timer!("Generation of permutation vk", {
         assembly
             .permutation
-            .build_vk(params, &domain, &cs.permutation)
+            .build_vk(params, &domain, &cs.permutation, dispatcher)
+            .await
     });
 
     let fixed_commitments = fixed
@@ -275,116 +277,13 @@ where
         .collect();
 
     Ok(VerifyingKey::from_parts(
-        domain,
+        domain.clone(),
         fixed_commitments,
         permutation_vk,
-        cs,
+        cs.clone(),
         assembly.selectors,
     ))
 }
-
-// /// Generate a `VerifyingKey` from an instance of `Circuit`.
-// pub async fn keygen_vk_distributed<'params, C, P, ConcreteCircuit>(
-//     params: &P,
-//     circuit: &ConcreteCircuit,
-// ) -> Result<VerifyingKey<C>, Error>
-// where
-//     C: CurveAffine,
-//     P: Params<'params, C>,
-//     ConcreteCircuit: Circuit<C::Scalar>,
-//     C::Scalar: FromUniformBytes<64>,
-// {
-//     let (domain, cs, config) = create_domain::<C, ConcreteCircuit>(
-//         params.k(),
-//         #[cfg(feature = "circuit-params")]
-//         circuit.params(),
-//     );
-
-//     if (params.n() as usize) < cs.minimum_rows() {
-//         return Err(Error::not_enough_rows_available(params.k()));
-//     }
-
-//     let mut assembly: Assembly<C::Scalar> = Assembly {
-//         k: params.k(),
-//         fixed: vec![domain.empty_lagrange_assigned(); cs.num_fixed_columns],
-//         permutation: permutation::keygen::Assembly::new(params.n() as usize, &cs.permutation),
-//         selectors: vec![vec![false; params.n() as usize]; cs.num_selectors],
-//         usable_rows: 0..params.n() as usize - (cs.blinding_factors() + 1),
-//         _marker: std::marker::PhantomData,
-//     };
-
-//     // Synthesize the circuit to obtain URS
-//     ConcreteCircuit::FloorPlanner::synthesize(
-//         &mut assembly,
-//         circuit,
-//         config,
-//         cs.constants.clone(),
-//     )?;
-
-//     let mut fixed = batch_invert_assigned(assembly.fixed);
-//     let (cs, selector_polys) = cs.compress_selectors(assembly.selectors.clone());
-//     fixed.extend(
-//         selector_polys
-//             .into_iter()
-//             .map(|poly| domain.lagrange_from_vec(poly)),
-//     );
-
-//     // let permutation_vk = timer!("Generation of permutation vk", {
-//     //     assembly
-//     //         .permutation
-//     //         .build_vk(params, &domain, &cs.permutation)
-//     // });
-
-//     let params_kzg = unsafe { std::mem::transmute::<P, ParamsKZG<Bn256>>(params.clone()) };
-
-//     let task = KeygenTaskKZG::<C>::new(
-//         params_kzg,
-//         &domain,
-//         &cs.permutation,
-//         assembly.permutation.mapping,
-//     );
-
-//     let mut dispatcher = Dispatcher::new().await;
-//     let commitments = join_all(dispatcher.workers.iter_mut().map(|worker| async {
-//         // Dump the method over
-//         worker.write_u8(WorkerMethod::KeyGen as u8).await.unwrap();
-
-//         // Drop the payload
-//         worker
-//             .write_all(to_bytes(task.clone()).as_slice())
-//             .await
-//             .unwrap();
-
-//         // Flush the buffer
-//         worker.flush().await.unwrap();
-
-//         // Prepare to receive the commitments
-//         let mut cs = [0u8; core::mem::size_of::<G1Affine>()];
-
-//         // Read the output from the worker
-//         worker.read_exact(&mut cs).await.unwrap();
-
-//         // NOTE: This [0] will be removed later when we recieve from multiple sources
-//         // This method will need to handle proper ordering as well of the commitments
-//         cs.cast::<C>()[0]
-//     }))
-//     .await;
-
-//     let permutation_vk = permutation::VerifyingKey { commitments };
-
-//     let fixed_commitments = fixed
-//         .iter()
-//         .map(|poly| params.commit_lagrange(poly, Blind::default()).to_affine())
-//         .collect();
-
-//     Ok(VerifyingKey::from_parts(
-//         domain,
-//         fixed_commitments,
-//         permutation_vk,
-//         cs,
-//         assembly.selectors,
-//     ))
-// }
 
 /// Generate a `ProvingKey` from a `VerifyingKey` and an instance of `Circuit`.
 pub fn keygen_pk<'params, C, P, ConcreteCircuit>(

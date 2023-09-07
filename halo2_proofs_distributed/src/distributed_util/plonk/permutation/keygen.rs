@@ -16,16 +16,16 @@ use crate::{
 
 /// Distributed request to perform keygen
 #[derive(Debug, Clone)]
-pub struct KeygenTaskKZG<'a, C: CurveAffine> {
-    pub params: ParamsKZG<Bn256>,
+pub struct KeygenTaskKZG<'a, C: CurveAffine, P: Params<'a, C>> {
+    pub params: &'a P,
     pub domain: &'a EvaluationDomain<C::Scalar>,
     pub p: &'a Argument,
     pub mapping: Vec<Vec<(usize, usize)>>,
 }
 
-impl<'a, C: CurveAffine> KeygenTaskKZG<'a, C> {
+impl<'a, C: CurveAffine, P: Params<'a, C>> KeygenTaskKZG<'a, C, P> {
     pub fn new(
-        params: ParamsKZG<Bn256>,
+        params: &'a P,
         domain: &'a EvaluationDomain<C::Scalar>,
         p: &'a Argument,
         mapping: Vec<Vec<(usize, usize)>>,

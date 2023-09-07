@@ -69,14 +69,14 @@ impl Dispatcher {
     }
 
     /// Initiates the distributed keygen operation.
-    pub async fn keygen<'params, C: CurveAffine>(
+    pub async fn keygen<'params, C: CurveAffine, P: Params<'params, C>>(
         &mut self,
-        params: &ParamsKZG<Bn256>,
-        domain: &EvaluationDomain<C::Scalar>,
-        p: &Argument,
-        mapping: Vec<Vec<(usize, usize)>>,
-    ) -> Vec<G1Affine> {
-        let task = KeygenTaskKZG::<C>::new(params.clone(), domain, p, mapping);
+        params: &'params P,
+        domain: &'params EvaluationDomain<C::Scalar>,
+        p: &'params Argument,
+        mapping: &Vec<Vec<(usize, usize)>>,
+    ) -> Vec<C> {
+        let task = KeygenTaskKZG::<C, P>::new(params, domain, p, mapping.clone());
         let commitments = join_all(self.workers.iter_mut().map(|worker| async {
             // Dump the method over
             worker.write_u8(WorkerMethod::KeyGen as u8).await.unwrap();
@@ -98,7 +98,7 @@ impl Dispatcher {
 
             // NOTE: This [0] will be removed later when we recieve from multiple sources
             // This method will need to handle proper ordering as well of the commitments
-            cs.cast::<G1Affine>()[0]
+            cs.cast::<C>()[0]
         }))
         .await;
 
